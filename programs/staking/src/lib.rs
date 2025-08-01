@@ -8,7 +8,8 @@ pub mod staking {
     use anchor_lang::solana_program::{clock, example_mocks::solana_sdk::system_program};
 
     use super::*;
-
+      
+      //pda creation
     pub fn create_pda_account(ctx: Context<CreatePdaAccount>) -> Result<()> {
         let pda_account = &mut ctx.accounts.pda_account;
         let clock = Clock::get()?;
@@ -20,6 +21,8 @@ pub mod staking {
         
         Ok(());
     }
+
+     //Staking instruction
     pub fn Stake( ctx: Context<Stake>, amount: u64) -> Result<()> {
         require!(amount > 0, StakeError::InvalidAmount);
         let pda_account = &mut ctx.accounts.pda_account;
@@ -46,6 +49,8 @@ pub mod staking {
              amount, pda_account.staked_amount, pda_account.total_points / 1_000_000);
         Ok(())
     }
+
+    //Unstaking Instruction
     pub fn unstake(ctx: Context<Unstake>, amount: u64) -> Result<()>{
     require!(amount > 0, StakeError::InvalidAmount);
     
@@ -81,6 +86,29 @@ pub mod staking {
     Ok(())
     }
 }
+
+    pub fn claim_points(ctx:Context<ClaimPoints>) -> Result<()> {
+        let pda_account = &ctx.accounts.pda_account;
+        let clock = Clock::get()?;
+
+        //update the points to the current time
+        update_points(pda_account, clock.unix_timestamp)?;
+        let points_claimed = pda_account.total_points / 1_000_000;
+        msg!("user has claimed {} points", points_claimed);
+        pda_account.total_points = 0;
+
+        Ok(());
+    }
+
+    pub fn update_points(pda_account: &mut StakeAccount, current_time: u64) -> Result<(), StakeError>{
+      let time_passed = current_time.checked_sub(pda_account.last_update_time).ok_or(StakeError::InvalidTimestamp);
+      if time_passed > 0 && pda_account.staked_amount > 0 {
+        let new_points = calculate_points(pda_account.staked_amount, time_passed);
+        pda_account.total_points = pda_account.total_points.checked_add(new_points).ok_or(StakeError::Overflow);
+      }
+      pda_account.last_update_time = current_time;
+      Ok(())
+    }
 
 #[derive(Accounts)]
 pub struct CreatePdaAccount<'info> {
@@ -135,7 +163,7 @@ pub struct StakeAccount {
     pub owner: Pubkey,
     pub staked_amount: u64,
     pub total_points: u64,
-    pub last_update_time: i64,
+    pub last_update_time: u64,
     pub bump: u8,
 }
 
